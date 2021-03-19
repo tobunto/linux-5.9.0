@@ -558,6 +558,10 @@ static void option_instat_callback(struct urb *urb);
 #define WETELECOM_PRODUCT_6802			0x6802
 #define WETELECOM_PRODUCT_WMD300		0x6803
 
+/*zhixin products*/
+#define ZHIXIN_VENDOR_ID 0x3763
+#define ZHIXIN_PRODUCT_ID 0x3c93
+
 
 /* Device flags */
 
@@ -608,7 +612,9 @@ static const struct usb_device_id option_ids[] = {
 	{ USB_DEVICE(QUANTA_VENDOR_ID, 0xea42),
 	  .driver_info = RSVD(4) },
 	{ USB_DEVICE(HUAWEI_VENDOR_ID, HUAWEI_PRODUCT_DCM4G),
-	  .driver_info = RSVD(0) },
+	  .driver_info = RSVD(0) },	/*huawei ftu2020*/
+	{ USB_DEVICE(ZHIXIN_VENDOR_ID, ZHIXIN_PRODUCT_ID),
+	  .driver_info = RSVD(4) },	/*zhixin ftu2020*/
 	{ USB_DEVICE_AND_INTERFACE_INFO(HUAWEI_VENDOR_ID, 0x1c05, USB_CLASS_COMM, 0x02, 0xff) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(HUAWEI_VENDOR_ID, 0x1c1f, USB_CLASS_COMM, 0x02, 0xff) },
 	{ USB_DEVICE_AND_INTERFACE_INFO(HUAWEI_VENDOR_ID, 0x1c23, USB_CLASS_COMM, 0x02, 0xff) },
@@ -2112,6 +2118,7 @@ static int option_probe(struct usb_serial *serial,
 	 */
 	if (device_flags & NUMEP2 && iface_desc->bNumEndpoints != 2)
 		return -ENODEV;
+		   
 
 	/* Store the device flags so we can use them during attach. */
 	usb_set_serial_data(serial, (void *)device_flags);
