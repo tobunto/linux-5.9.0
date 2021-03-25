@@ -28,6 +28,7 @@
 #define PCA953X_OUTPUT		0x01
 #define PCA953X_INVERT		0x02
 #define PCA953X_DIRECTION	0x03
+#define PCA953X_IRQMASK	0x04
 
 #define REG_ADDR_MASK		GENMASK(5, 0)
 #define REG_ADDR_EXT		BIT(6)
@@ -203,6 +204,7 @@ struct pca953x_reg_config {
 	int output;
 	int input;
 	int invert;
+	int irqmask;
 };
 
 static const struct pca953x_reg_config pca953x_regs = {
@@ -210,6 +212,7 @@ static const struct pca953x_reg_config pca953x_regs = {
 	.output = PCA953X_OUTPUT,
 	.input = PCA953X_INPUT,
 	.invert = PCA953X_INVERT,
+	.irqmask = PCA953X_IRQMASK,
 };
 
 static const struct pca953x_reg_config pca957x_regs = {
@@ -252,6 +255,7 @@ static int pca953x_bank_shift(struct pca953x_chip *chip)
 #define PCA953x_BANK_OUTPUT	BIT(1)
 #define PCA953x_BANK_POLARITY	BIT(2)
 #define PCA953x_BANK_CONFIG	BIT(3)
+#define PCA953x_BANK_IRQMASK	BIT(4)
 
 #define PCA957x_BANK_INPUT	BIT(0)
 #define PCA957x_BANK_POLARITY	BIT(1)
@@ -325,7 +329,7 @@ static bool pca953x_readable_register(struct device *dev, unsigned int reg)
 
 	if (PCA_CHIP_TYPE(chip->driver_data) == PCA953X_TYPE) {
 		bank = PCA953x_BANK_INPUT | PCA953x_BANK_OUTPUT |
-		       PCA953x_BANK_POLARITY | PCA953x_BANK_CONFIG;
+		       PCA953x_BANK_POLARITY | PCA953x_BANK_CONFIG | PCA953x_BANK_IRQMASK;
 	} else {
 		bank = PCA957x_BANK_INPUT | PCA957x_BANK_OUTPUT |
 		       PCA957x_BANK_POLARITY | PCA957x_BANK_CONFIG |
@@ -348,7 +352,7 @@ static bool pca953x_writeable_register(struct device *dev, unsigned int reg)
 
 	if (PCA_CHIP_TYPE(chip->driver_data) == PCA953X_TYPE) {
 		bank = PCA953x_BANK_OUTPUT | PCA953x_BANK_POLARITY |
-			PCA953x_BANK_CONFIG;
+			PCA953x_BANK_CONFIG | PCA953x_BANK_IRQMASK;
 	} else {
 		bank = PCA957x_BANK_OUTPUT | PCA957x_BANK_POLARITY |
 			PCA957x_BANK_CONFIG | PCA957x_BANK_BUSHOLD;
@@ -456,11 +460,21 @@ static int pca953x_gpio_direction_input(struct gpio_chip *gc, unsigned off)
 {
 	struct pca953x_chip *chip = gpiochip_get_data(gc);
 	u8 dirreg = pca953x_recalc_addr(chip, chip->regs->direction, off);
+#ifdef CONFIG_GPIO_PCA953X_IRQ
+	u8 irqreg = pca953x_recalc_addr(chip, chip->regs->irqmask, off);
+#endif
 	u8 bit = BIT(off % BANK_SZ);
 	int ret;
 
 	mutex_lock(&chip->i2c_lock);
 	ret = regmap_write_bits(chip->regmap, dirreg, bit, bit);
+	if(ret)
+		goto exit;
+		
+#ifdef CONFIG_GPIO_PCA953X_IRQ	
+	ret = regmap_write_bits(chip->regmap, irqreg, bit, 0);	
+#endif
+exit:
 	mutex_unlock(&chip->i2c_lock);
 	return ret;
 }
@@ -902,7 +916,7 @@ static int pca953x_irq_setup(struct pca953x_chip *chip, int irq_base)
 
 	ret = devm_request_threaded_irq(&client->dev, client->irq,
 					NULL, pca953x_irq_handler,
-					IRQF_ONESHOT | IRQF_SHARED,
+					IRQF_ONESHOT | IRQF_SHARED|IRQF_TRIGGER_LOW,
 					dev_name(&client->dev), chip);
 	if (ret) {
 		dev_err(&client->dev, "failed to request irq %d\n",
@@ -1028,7 +1042,7 @@ static int pca953x_probe(struct i2c_client *client,
 	u32 invert = 0;
 	struct regulator *reg;
 	const struct regmap_config *regmap_config;
-printk("%s enter\n",__func__);
+
 	chip = devm_kzalloc(&client->dev, sizeof(*chip), GFP_KERNEL);
 	if (chip == NULL)
 		return -ENOMEM;
@@ -1156,7 +1170,7 @@ printk("%s enter\n",__func__);
 		if (ret < 0)
 			dev_warn(&client->dev, "setup failed, %d\n", ret);
 	}
-printk("%s end\n",__func__);
+
 	return 0;
 
 err_exit:
